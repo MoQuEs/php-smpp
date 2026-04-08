@@ -194,6 +194,7 @@ class Socket
     {
         if (!$this->isOpen()) {
             self::$defaultSendTimeout = $timeout;
+            return true;
         } else {
             return socket_set_option(
                 $this->socket,
@@ -214,6 +215,7 @@ class Socket
     {
         if (!$this->isOpen()) {
             self::$defaultRecvTimeout = $timeout;
+            return true;
         } else {
             return socket_set_option(
                 $this->socket,
@@ -232,7 +234,7 @@ class Socket
      */
     public function isOpen()
     {
-        if (!is_resource($this->socket)) {
+        if ($this->socket === null || (!is_resource($this->socket) && !($this->socket instanceof \Socket))) {
             return false;
         }
 
@@ -276,9 +278,13 @@ class Socket
      */
     public function open()
     {
+        // Initialize to null so we can safely check before closing
+        $socket6 = null;
+        $socket4 = null;
+
         if (!self::$forceIpv4) {
             $socket6 = @socket_create(AF_INET6, SOCK_STREAM, SOL_TCP);
-            if ($socket6 == false) {
+            if ($socket6 === false) {
                 throw new SocketTransportException(
                     'Could not create socket; ' . socket_strerror(socket_last_error()),
                     socket_last_error()
@@ -299,7 +305,7 @@ class Socket
         }
         if (!self::$forceIpv6) {
             $socket4 = @socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
-            if ($socket4 == false) {
+            if ($socket4 === false) {
                 throw new SocketTransportException('Could not create socket; ' . socket_strerror(socket_last_error()), socket_last_error());
             }
             socket_set_option($socket4, SOL_SOCKET, SO_SNDTIMEO, $this->millisecToSolArray(self::$defaultSendTimeout));
@@ -318,7 +324,9 @@ class Socket
                         if ($this->debug) {
                             call_user_func($this->debugHandler, "Connected to $ip:$port!");
                         }
-                        @socket_close($socket4);
+                        if ($socket4 !== null) {
+                            @socket_close($socket4);
+                        }
                         $this->socket = $socket6;
                         return;
                     } elseif ($this->debug) {
@@ -332,7 +340,9 @@ class Socket
                     $r = @socket_connect($socket4, $ip, $port);
                     if ($r) {
                         if ($this->debug) call_user_func($this->debugHandler, "Connected to $ip:$port!");
-                        @socket_close($socket6);
+                        if ($socket6 !== null) {
+                            @socket_close($socket6);
+                        }
                         $this->socket = $socket4;
                         return;
                     } elseif ($this->debug) {
@@ -424,27 +434,28 @@ class Socket
     public function readAll($length)
     {
         $d = "";
-        $r = 0;
+        $bytesRead = 0;
         $readTimeout = socket_get_option($this->socket, SOL_SOCKET, SO_RCVTIMEO);
-        while ($r < $length) {
+        while ($bytesRead < $length) {
             $buf = '';
-            $r += socket_recv($this->socket, $buf, $length - $r, MSG_DONTWAIT);
-            if ($r === false) {
+            $received = socket_recv($this->socket, $buf, $length - $bytesRead, MSG_DONTWAIT);
+            if ($received === false) {
                 throw new SocketTransportException(
                     'Could not read ' . $length . ' bytes from socket; ' . socket_strerror(socket_last_error()),
                     socket_last_error()
                 );
             }
+            $bytesRead += $received;
             $d .= $buf;
-            if ($r == $length) {
+            if ($bytesRead == $length) {
                 return $d;
             }
 
             // wait for data to be available, up to timeout
-            $r = [$this->socket];
+            $readSockets = [$this->socket];
             $w = null;
             $e = [$this->socket];
-            $res = socket_select($r, $w, $e, $readTimeout['sec'], $readTimeout['usec']);
+            $res = socket_select($readSockets, $w, $e, $readTimeout['sec'], $readTimeout['usec']);
 
             // check
             if ($res === false) {
@@ -459,10 +470,11 @@ class Socket
                     socket_last_error()
                 );
             }
-            if (empty($r)) {
+            if (empty($readSockets)) {
                 throw new SocketTransportException('Timed out waiting for data on socket');
             }
         }
+        return $d;
     }
 
     /**
@@ -474,19 +486,19 @@ class Socket
      */
     public function write($buffer, $length)
     {
-        $r = $length;
+        $remaining = $length;
         $writeTimeout = socket_get_option($this->socket, SOL_SOCKET, SO_SNDTIMEO);
 
-        while ($r > 0) {
-            $wrote = socket_write($this->socket, $buffer, $r);
+        while ($remaining > 0) {
+            $wrote = socket_write($this->socket, $buffer, $remaining);
             if ($wrote === false) {
                 throw new SocketTransportException(
                     'Could not write ' . $length . ' bytes to socket; ' . socket_strerror(socket_last_error()),
                     socket_last_error()
                 );
             }
-            $r -= $wrote;
-            if ($r == 0) {
+            $remaining -= $wrote;
+            if ($remaining == 0) {
                 return;
             }
 

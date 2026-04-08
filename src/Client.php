@@ -147,6 +147,7 @@ class Client
         $this->mode = self::MODE_RECEIVER;
         $this->login = $login;
         $this->pass = $pass;
+        return true;
     }
 
     /**
@@ -175,6 +176,7 @@ class Client
         $this->mode = self::MODE_TRANSMITTER;
         $this->login = $login;
         $this->pass = $pass;
+        return true;
     }
 
     /**
@@ -197,6 +199,7 @@ class Client
         $this->mode = self::MODE_TRANSCEIVER;
         $this->login = $login;
         $this->pass = $pass;
+        return true;
     }
 
     /**
@@ -232,8 +235,7 @@ class Client
      */
     public function parseSmppTime($input, $newDates = true)
     {
-        // Check for support for new date classes
-        if (!class_exists('DateTime') || !class_exists('DateInterval')) $newDates = false;
+        // DateTime and DateInterval are available since PHP 5.2 – no need to check
 
         $numMatch = preg_match('/^(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{1})(\\d{2})([R+-])$/', $input, $matches);
         if (!$numMatch) return null;
@@ -418,7 +420,7 @@ class Client
                     $from,
                     $to,
                     null,
-                    (empty($tags) ? [$payload] : array_merge($tags, $payload)),
+                    (empty($tags) ? [$payload] : array_merge($tags, [$payload])),
                     $dataCoding,
                     $priority,
                     $scheduleDeliveryTime,
@@ -426,6 +428,7 @@ class Client
                 );
             } else if (self::$csmsMethod == self::CSMS_8BIT_UDH) {
                 $seqnum = 1;
+                $res = false;
                 foreach ($parts as $part) {
                     $udh = pack('cccccc', 5, 0, 3, substr($csmsReference, 1, 1), count($parts), $seqnum);
                     $res = $this->submit_sm(
@@ -446,6 +449,7 @@ class Client
                 $sar_msg_ref_num = new Tag(Tag::SAR_MSG_REF_NUM, $csmsReference, 2, 'n');
                 $sar_total_segments = new Tag(Tag::SAR_TOTAL_SEGMENTS, count($parts), 1, 'c');
                 $seqnum = 1;
+                $res = false;
                 foreach ($parts as $part) {
                     $sartags = [$sar_msg_ref_num, $sar_total_segments, new Tag(Tag::SAR_SEGMENT_SEQNUM, $seqnum, 1, 'c')];
                     $res = $this->submit_sm($from, $to, $part, (empty($tags) ? $sartags : array_merge($tags, $sartags)), $dataCoding, $priority, $scheduleDeliveryTime, $validityPeriod);
@@ -487,6 +491,9 @@ class Client
                 $esmClass = null
     ) {
         if (is_null($esmClass)) $esmClass = self::$smsEsmClass;
+
+        // PHP 8.1: strlen(null) is deprecated – normalize to empty string
+        $short_message = $short_message ?? '';
 
         // Construct PDU with mandatory fields
         $pdu = pack(
