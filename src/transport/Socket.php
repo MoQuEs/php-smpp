@@ -17,21 +17,22 @@ use smpp\exceptions\SocketTransportException;
  * Licensed under the MIT license, which can be read at: http://www.opensource.org/licenses/mit-license.php
  * @author hd@onlinecity.dk
  */
-class Socket
+class Socket extends Transport
 {
     protected $socket;
-    protected $hosts;
+    protected array $hosts = [];
     protected $persist;
     protected $debugHandler;
-    public $debug;
+    public bool $debug;
 
-    protected static $defaultSendTimeout = 100;
-    protected static $defaultRecvTimeout = 750;
-    public static $defaultDebug = false;
+    public static int  $defaultSendTimeout = 100;
+    public static int  $defaultRecvTimeout = 750;
+    public static bool $defaultDebug = false;
 
-    public static $forceIpv6 = false;
-    public static $forceIpv4 = false;
-    public static $randomHost = false;
+
+    public static bool $forceIpv6  = false;
+    public static bool $forceIpv4  = false;
+    public static bool $randomHost = false;
 
     /**
      * Construct a new socket for this transport to use.
@@ -57,95 +58,6 @@ class Socket
         $this->resolveHosts($h);
 
         $this->persist = $persist;
-    }
-
-    /**
-     * Resolve the hostnames into IPs, and sort them into IPv4 or IPv6 groups.
-     * If using DNS hostnames, and all lookups fail, a InvalidArgumentException is thrown.
-     *
-     * @param array $hosts
-     * @throws \InvalidArgumentException
-     */
-    protected function resolveHosts($hosts)
-    {
-        $i = 0;
-        foreach ($hosts as $host) {
-            list($hostname, $port) = $host;
-            $ip4s = [];
-            $ip6s = [];
-            if (preg_match('/^([12]?[0-9]?[0-9]\.){3}([12]?[0-9]?[0-9])$/', $hostname)) {
-                // IPv4 address
-                $ip4s[] = $hostname;
-            } else if (preg_match('/^([0-9a-f:]+):[0-9a-f]{1,4}$/i', $hostname)) {
-                // IPv6 address
-                $ip6s[] = $hostname;
-            } else { // Do a DNS lookup
-                if (!self::$forceIpv4) {
-                    // if not in IPv4 only mode, check the AAAA records first
-                    $records = dns_get_record($hostname, DNS_AAAA);
-                    if ($records === false && $this->debug) {
-                        call_user_func($this->debugHandler, 'DNS lookup for AAAA records for: ' . $hostname . ' failed');
-                    }
-                    if ($records) {
-                        foreach ($records as $r) {
-                            if (isset($r['ipv6']) && $r['ipv6']) {
-                                $ip6s[] = $r['ipv6'];
-                            }
-                        }
-                    }
-                    if ($this->debug) {
-                        call_user_func($this->debugHandler, "IPv6 addresses for $hostname: " . implode(', ', $ip6s));
-                    }
-                }
-                if (!self::$forceIpv6) {
-                    // if not in IPv6 mode check the A records also
-                    $records = dns_get_record($hostname, DNS_A);
-                    if ($records === false && $this->debug) {
-                        call_user_func($this->debugHandler, 'DNS lookup for A records for: ' . $hostname . ' failed');
-                    }
-                    if ($records) {
-                        foreach ($records as $r) {
-                            if (isset($r['ip']) && $r['ip']) $ip4s[] = $r['ip'];
-                        }
-                    }
-                    // also try gethostbyname, since name could also be something else, such as "localhost" etc.
-                    $ip = gethostbyname($hostname);
-                    if ($ip != $hostname && !in_array($ip, $ip4s)) {
-                        $ip4s[] = $ip;
-                    }
-                    if ($this->debug) {
-                        call_user_func($this->debugHandler, "IPv4 addresses for $hostname: " . implode(', ', $ip4s));
-                    }
-                }
-            }
-
-            // Did we get any results?
-            if (
-                (self::$forceIpv4 && empty($ip4s))
-                ||
-                (self::$forceIpv6 && empty($ip6s))
-                ||
-                (empty($ip4s) && empty($ip6s))
-            ) {
-                continue;
-            }
-
-            if ($this->debug) {
-                $i += count($ip4s) + count($ip6s);
-            }
-
-            // Add results to pool
-            $this->hosts[] = [$hostname, $port, $ip6s, $ip4s];
-        }
-        if ($this->debug) {
-            call_user_func(
-                $this->debugHandler,
-                "Built connection pool of " . count($this->hosts) . " host(s) with " . $i . " ip(s) in total"
-            );
-        }
-        if (empty($this->hosts)) {
-            throw new \InvalidArgumentException('No valid hosts was found');
-        }
     }
 
     /**
@@ -190,7 +102,7 @@ class Socket
      * @param int $timeout Timeout in milliseconds.
      * @return boolean
      */
-    public function setSendTimeout($timeout)
+    public function setSendTimeout(int $timeout): bool
     {
         if (!$this->isOpen()) {
             self::$defaultSendTimeout = $timeout;
@@ -211,7 +123,7 @@ class Socket
      * @param int $timeout Timeout in milliseconds.
      * @return boolean
      */
-    public function setRecvTimeout($timeout)
+    public function setRecvTimeout(int $timeout): bool
     {
         if (!$this->isOpen()) {
             self::$defaultRecvTimeout = $timeout;
@@ -232,7 +144,7 @@ class Socket
      * Throws SocketTransportException is state could not be ascertained
      * @throws SocketTransportException
      */
-    public function isOpen()
+    public function isOpen(): bool
     {
         if ($this->socket === null || (!is_resource($this->socket) && !($this->socket instanceof \Socket))) {
             return false;
@@ -276,7 +188,7 @@ class Socket
      *
      * @throws SocketTransportException
      */
-    public function open()
+    public function open(): void
     {
         // Initialize to null so we can safely check before closing
         $socket6 = null;
@@ -360,7 +272,7 @@ class Socket
      * Since we don't reuse sockets, we can just close and forget about it,
      * but we choose to wait (linger) for the last data to come through.
      */
-    public function close()
+    public function close(): void
     {
         $arrOpt = ['l_onoff' => 1, 'l_linger' => 1];
         socket_set_block($this->socket);
@@ -373,7 +285,7 @@ class Socket
      * @return boolean
      * @throws SocketTransportException
      */
-    public function hasData()
+    public function hasData(): bool
     {
         $r = [$this->socket];
         $w = null;
@@ -404,7 +316,7 @@ class Socket
      * @return mixed
      * @throws SocketTransportException
      */
-    public function read($length)
+    public function read(int $length): string|false
     {
         $d = socket_read($this->socket, $length, PHP_BINARY_READ);
         // sockets give EAGAIN on timeout
@@ -431,7 +343,7 @@ class Socket
      * @param integer $length
      * @return string
      */
-    public function readAll($length)
+    public function readAll(int $length): string
     {
         $d = "";
         $bytesRead = 0;
@@ -484,7 +396,7 @@ class Socket
      * @param $buffer
      * @param integer $length
      */
-    public function write($buffer, $length)
+    public function write(string $buffer, int $length): void
     {
         $remaining = $length;
         $writeTimeout = socket_get_option($this->socket, SOL_SOCKET, SO_SNDTIMEO);
@@ -527,5 +439,16 @@ class Socket
                 throw new SocketTransportException('Timed out waiting to write data on socket');
             }
         }
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Plain TCP sockets do not support SSL/TLS – this method is a no-op.
+     * Use StreamSocket with scheme 'ssl' or 'tls' for encrypted connections.
+     */
+    public function setSslVerification(bool $verify): void
+    {
+        // no-op: Socket is plain TCP only
     }
 }

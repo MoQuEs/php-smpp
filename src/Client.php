@@ -6,7 +6,7 @@ namespace smpp;
 use Exception;
 use smpp\exceptions\SmppException;
 use smpp\exceptions\SocketTransportException;
-use smpp\transport\Socket;
+use smpp\transport\TransportInterface;
 
 /**
  * Class for receiving or sending sms through SMPP protocol.
@@ -107,10 +107,10 @@ class Client
     /**
      * Construct the SMPP class
      *
-     * @param Socket $transport
+     * @param TransportInterface $transport
      * @param string $debugHandler
      */
-    public function __construct(Socket $transport, $debugHandler = null)
+    public function __construct(TransportInterface $transport, $debugHandler = null)
     {
         // Internal parameters
         $this->sequenceNumber = 1;
