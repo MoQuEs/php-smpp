@@ -71,7 +71,9 @@ abstract class Transport implements TransportInterface
         $this->debug         = self::$defaultDebug;
         $this->debugHandler  = $debugHandler ?? 'error_log';
         $this->sendTimeoutMs = self::$defaultSendTimeout;
-        $this->recvTimeoutMs = self::$defaultRecvTimeout;
+        $this->recvTimeoutMs = $scheme === 'tcp'
+            ? self::$defaultRecvTimeout
+            : max(self::$defaultRecvTimeout, 5000);
 
         $resolved = [];
         foreach ($hosts as $key => $host) {

@@ -825,7 +825,10 @@ class Client
         $response = $this->readPduResponse($this->sequenceNumber, $pdu->id);
 
         if ($response === false) {
-            throw new SmppException('Failed to read reply to command: 0x' . dechex($id));
+            throw new SmppException(
+                'Failed to read reply to command: 0x' . dechex($id)
+                . ' (no complete PDU received before timeout or connection close)'
+            );
         }
 
         if ($response->status != SMPP::ESME_ROK) {
@@ -909,13 +912,48 @@ class Client
     }
 
     /**
+     * Reads exactly $length bytes from the transport, unless no data arrives at all.
+     *
+     * Returns false when the first read times out or the connection is already closed.
+     * Throws when the transport stops mid-frame after some bytes have already arrived.
+     *
+     * @throws SocketTransportException
+     */
+    protected function readPduChunk(int $length): string|false
+    {
+        $data = '';
+
+        while (strlen($data) < $length) {
+            $chunk = $this->transport->read($length - strlen($data));
+
+            if ($chunk === false) {
+                if ($data === '') {
+                    return false;
+                }
+
+                throw new SocketTransportException(
+                    'Transport stopped while reading PDU chunk: got '
+                    . strlen($data)
+                    . ' of '
+                    . $length
+                    . ' bytes'
+                );
+            }
+
+            $data .= $chunk;
+        }
+
+        return $data;
+    }
+
+    /**
      * Reads incoming PDU from SMSC.
      * @return bool|Pdu
      */
     protected function readPDU()
     {
         // Read PDU length
-        $bufLength = $this->transport->read(4);
+        $bufLength = $this->readPduChunk(4);
         if (!$bufLength) {
             return false;
         }
@@ -930,7 +968,7 @@ class Client
         extract(unpack("Nlength", $bufLength));
 
         // Read PDU headers
-        $bufHeaders = $this->transport->read(12);
+        $bufHeaders = $this->readPduChunk(12);
         if (!$bufHeaders) {
             return false;
         }
