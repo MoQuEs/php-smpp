@@ -1,8 +1,8 @@
 {
-  "name": "alexandr-mironov/php-smpp",
+  "name": "moques/php-smpp",
   "description": "PHP SMPP client lib, fork of onlinecity/php-smpp",
   "keywords": ["smpp", "sms", "texting", "gsm"],
-  "homepage": "https://github.com/alexandr-mironov/php-smpp",
+  "homepage": "https://github.com/moques/php-smpp",
   "type": "library",
   "license": "LGPL-2.0-or-later",
   "authors": [
@@ -17,9 +17,12 @@
     }
   ],
   "require": {
-    "php": ">=5.4",
+    "php": ">=8.1",
     "ext-sockets": "*",
     "ext-mbstring": "*"
+  },
+  "suggest": {
+    "ext-openssl": "Required for SSL/TLS connections via StreamSocket (scheme 'ssl' or 'tls')"
   },
   "require-dev": {
   },
